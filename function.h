@@ -1398,6 +1398,7 @@ void page_optimal_visualization(){
     // TODO: Implement page optimal visualization
 }
 
+
 void ps_algorithm() {
     setbkcolor(DARKGRAY);
     cleardevice();
@@ -1415,7 +1416,6 @@ void ps_algorithm() {
     setcolor(WHITE);
     outtextxy(400 - textwidth("Priority Scheduling Algorithm")/2, 30, "Priority Scheduling Algorithm");
 
-    // Draw separator line
     setcolor(CYAN);
     line(50, 70, 750, 70);
 
@@ -1434,7 +1434,9 @@ void ps_algorithm() {
     char procCountStr[10] = "", procStr[1000] = "";
     bool showResult = false;
     bool resultDisplayed = false;
-    vector<array<int, 4>> result;
+    struct Proc { int prio, arr, burst, pid, start, finish, wait, tat; };
+    vector<Proc> result;
+    double avgTAT = 0, avgWT = 0;
 
     while(true) {
         submit.hover(GREEN);
@@ -1453,11 +1455,11 @@ void ps_algorithm() {
                 resultDisplayed = false;
             }
             else if(submit.cursor()) {
-                // Clear previous result first
                 setfillstyle(SOLID_FILL, DARKGRAY);
                 bar(100, 370, 700, 500);
+                setfillstyle(SOLID_FILL, DARKGRAY);
+                bar(100, 510, 700, 570); // Clear avg box
 
-                // Validate inputs
                 if(strlen(procCountStr) == 0 || strlen(procStr) == 0) {
                     setcolor(RED);
                     settextstyle(8, 0, 2);
@@ -1481,17 +1483,13 @@ void ps_algorithm() {
 
                 // Parse process input
                 istringstream iss(procStr);
-                vector<array<int,4>> v;
-                map<int, int> burstMap, execMap;
-                int cnt = 0;
+                vector<Proc> procs;
                 for(int i = 0; i < n; i++) {
                     int prio, arr, burst;
                     if(!(iss >> prio >> arr >> burst)) break;
-                    v.push_back({prio, arr, burst, i+1});
-                    burstMap[i+1] = burst;
-                    cnt++;
+                    procs.push_back({prio, arr, burst, i+1, -1, -1, 0, 0});
                 }
-                if(cnt != n) {
+                if(procs.size() != n) {
                     setcolor(RED);
                     settextstyle(8, 0, 2);
                     outtextxy(200, 370, "Invalid process input!");
@@ -1500,34 +1498,50 @@ void ps_algorithm() {
                     delay(1000);
                     continue;
                 }
-                sort(v.begin(), v.end());
 
-                int st = 0, end = 0;
-                for(int i=0;i<n;i++) end+= v[i][2];
+                // Sort by arrival then priority
+                sort(procs.begin(), procs.end(), [](const Proc& a, const Proc& b){
+                    if(a.arr != b.arr) return a.arr < b.arr;
+                    return a.prio < b.prio;
+                });
 
-                vector<array<int,4>> a;
-                map<int,int> mp2;
-                for(int i=0;i<=end;i++){
-                    int ind = 0;
-                    vector<array<int,4>> na;
-                    while (1)
-                    {
-                        if( ind<v.size() && v[ind][1]<=i && burstMap[v[ind][3]]>0) na.push_back({v[ind][0], v[ind][1], v[ind][2], v[ind][3]}),ind++;
-                        else break;
+                int time = 0, finished = 0;
+                vector<bool> done(n, false);
+                while(finished < n) {
+                    // Find ready processes
+                    vector<Proc*> ready;
+                    for(auto& p : procs)
+                        if(!done[p.pid-1] && p.arr <= time)
+                            ready.push_back(&p);
+                    Proc* run = nullptr;
+                    if(!ready.empty()) {
+                        run = *min_element(ready.begin(), ready.end(), [](Proc* a, Proc* b){
+                            return a->prio < b->prio || (a->prio == b->prio && a->arr < b->arr);
+                        });
                     }
-                    sort(na.begin(), na.end());
-                    if( na.size() >= 1){
-                        burstMap[na[0][3]]--;
-                        mp2[na[0][3]]++;
-                        if( burstMap[na[0][3]] == 0 ){
-                            auto it = find_if(v.begin(), v.end(), [&](auto &x) { return x[3] == na[0][3]; });
-                            v.erase(it);
-                        }
-                        a.push_back({na[0][3], i, mp2[na[0][3]], na[0][0]});
+                    if(run) {
+                        run->start = time;
+                        run->finish = time + run->burst;
+                        run->tat = run->finish - run->arr;
+                        run->wait = run->start - run->arr;
+                        time += run->burst;
+                        done[run->pid-1] = true;
+                        finished++;
+                    } else {
+                        time++;
                     }
-                    else a.push_back({-1, i, -1, -1});
                 }
-                result = a;
+                result = procs;
+                // Calculate averages
+                avgTAT = 0; avgWT = 0;
+                for(auto &p : result) {
+                    avgTAT += p.tat;
+                    avgWT += p.wait;
+                }
+                if(n) {
+                    avgTAT /= n;
+                    avgWT /= n;
+                }
                 showResult = true;
                 resultDisplayed = false;
             }
@@ -1541,6 +1555,8 @@ void ps_algorithm() {
                 bar(51, 221, 699, 269);
                 setfillstyle(SOLID_FILL, DARKGRAY);
                 bar(100, 370, 700, 500);
+                setfillstyle(SOLID_FILL, DARKGRAY);
+                bar(100, 510, 700, 570); // Clear avg box
             }
             else if(back.cursor()) {
                 menu();
@@ -1549,6 +1565,7 @@ void ps_algorithm() {
         }
 
         if(showResult && !resultDisplayed) {
+            // Draw result table
             setfillstyle(SOLID_FILL, LIGHTBLUE);
             bar(100, 370, 700, 500);
             setcolor(BLACK);
@@ -1558,24 +1575,47 @@ void ps_algorithm() {
             setcolor(BLACK);
             int y = 380;
             outtextxy(110, y, "PID");
-            outtextxy(170, y, "Time");
-            outtextxy(250, y, "Exec");
-            outtextxy(330, y, "Priority");
+            outtextxy(160, y, "Priority");
+            outtextxy(230, y, "Arrival");
+            outtextxy(300, y, "Burst");
+            outtextxy(370, y, "Start");
+            outtextxy(430, y, "Finish");
+            outtextxy(500, y, "Wait");
+            outtextxy(570, y, "TAT");
             y += 20;
-            for(auto &x : result) {
-                if(x[0] == -1) continue;
-                char buf[64];
-                sprintf(buf, "P%d", x[0]);
+            for(auto &p : result) {
+                char buf[32];
+                sprintf(buf, "P%d", p.pid);
                 outtextxy(110, y, buf);
-                sprintf(buf, "%d", x[1]);
-                outtextxy(170, y, buf);
-                sprintf(buf, "%d", x[2]);
-                outtextxy(250, y, buf);
-                sprintf(buf, "%d", x[3]);
-                outtextxy(330, y, buf);
+                sprintf(buf, "%d", p.prio);
+                outtextxy(160, y, buf);
+                sprintf(buf, "%d", p.arr);
+                outtextxy(230, y, buf);
+                sprintf(buf, "%d", p.burst);
+                outtextxy(300, y, buf);
+                sprintf(buf, "%d", p.start);
+                outtextxy(370, y, buf);
+                sprintf(buf, "%d", p.finish);
+                outtextxy(430, y, buf);
+                sprintf(buf, "%d", p.wait);
+                outtextxy(500, y, buf);
+                sprintf(buf, "%d", p.tat);
+                outtextxy(570, y, buf);
                 y += 18;
                 if(y > 480) break;
             }
+
+            // Draw averages in a separate box below
+            setfillstyle(SOLID_FILL, LIGHTCYAN);
+            bar(100, 510, 700, 570);
+            setcolor(BLACK);
+            rectangle(100, 510, 700, 570);
+            settextstyle(8, 0, 2);
+            setcolor(BLUE);
+            char buf[128];
+            sprintf(buf, "Avg Turnaround: %.2lf, Avg Waiting: %.2lf", avgTAT, avgWT);
+            outtextxy(150, 530, buf);
+
             resultDisplayed = true;
         }
     }
@@ -1653,17 +1693,93 @@ void ps_visualization() {
                 setfillstyle(SOLID_FILL, DARKGRAY);
                 bar(30, 170, 770, 630);
 
-                // Header for visualization
+                // Draw Gantt chart style
                 settextstyle(8, 0, 2);
                 setcolor(YELLOW);
-                outtextxy(50, 180, "Time");
-                outtextxy(120, 180, "PID");
-                outtextxy(200, 180, "Priority");
-                outtextxy(300, 180, "Arrival");
-                outtextxy(400, 180, "Burst");
-                outtextxy(500, 180, "Status");
+                outtextxy(50, 180, "Gantt Chart (PID | Priority)");
 
-                // Legend
+                int time = 0, finished = 0, xPos = 60, yPos = 220;
+                vector<bool> done(n, false);
+                vector<int> finishTime(n, -1);
+                int boxWidth = 60, boxHeight = 40;
+
+                // Find total time for scaling
+                int totalTime = 0;
+                vector<pair<int,int>> gantt; // {pid, duration}
+                vector<int> prioMap(n+1, 0);
+                while(finished < n) {
+                    vector<Proc*> ready;
+                    for(auto& p : procs)
+                        if(!done[p.pid-1] && p.arr <= time)
+                            ready.push_back(&p);
+                    Proc* run = nullptr;
+                    if(!ready.empty()) {
+                        run = *min_element(ready.begin(), ready.end(), [](Proc* a, Proc* b){
+                            return a->prio < b->prio || (a->prio == b->prio && a->arr < b->arr);
+                        });
+                    }
+                    if(run) {
+                        run->start = time;
+                        run->finish = time + run->burst;
+                        prioMap[run->pid] = run->prio;
+                        gantt.push_back({run->pid, run->burst});
+                        time += run->burst;
+                        done[run->pid-1] = true;
+                        finished++;
+                    } else {
+                        gantt.push_back({-1, 1});
+                        time++;
+                    }
+                }
+                totalTime = time;
+
+                // Draw Gantt chart with animation and correct time markers
+                xPos = 60;
+                int currTime = 0;
+                int rowStartX = xPos;
+                int rowY = yPos;
+                int rowEndX = 700;
+                for(size_t idx = 0; idx < gantt.size(); ++idx) {
+                    auto& g = gantt[idx];
+                    // Draw box
+                    if(g.first == -1) {
+                        setfillstyle(SOLID_FILL, LIGHTGRAY);
+                        bar(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        setcolor(BLACK);
+                        rectangle(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        setcolor(RED);
+                        outtextxy(xPos+10, rowY+10, "Idle");
+                    } else {
+                        setfillstyle(SOLID_FILL, LIGHTGREEN);
+                        bar(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        setcolor(BLACK);
+                        rectangle(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        char buf[32];
+                        sprintf(buf, "P%d | %d", g.first, prioMap[g.first]);
+                        setcolor(BLUE);
+                        outtextxy(xPos+5, rowY+10, buf);
+                    }
+                    // Draw time marker at the left of each box
+                    setcolor(BLACK);
+                    char tbuf[16];
+                    sprintf(tbuf, "%d", currTime);
+                    outtextxy(xPos, rowY+boxHeight+5, tbuf);
+
+                    delay(400);
+                    currTime += g.second;
+                    xPos += boxWidth;
+                    // If out of row, move to next row and draw time marker at row end
+                    if(xPos > rowEndX || idx == gantt.size()-1) {
+                        // Draw time marker at the end of the row
+                        char tbufEnd[16];
+                        sprintf(tbufEnd, "%d", currTime);
+                        outtextxy(xPos, rowY+boxHeight+5, tbufEnd);
+                        rowY += boxHeight+30;
+                        xPos = rowStartX;
+                    }
+                }
+
+                // Show legend
                 settextstyle(8, 0, 1);
                 setcolor(WHITE);
                 outtextxy(600, 180, "Legend:");
@@ -1678,145 +1794,7 @@ void ps_visualization() {
                 setcolor(BLACK);
                 rectangle(600, 210, 620, 220);
                 setcolor(WHITE);
-                outtextxy(625, 212, "Waiting");
-                setfillstyle(SOLID_FILL, LIGHTRED);
-                bar(600, 225, 620, 235);
-                setcolor(BLACK);
-                rectangle(600, 225, 620, 235);
-                setcolor(WHITE);
-                outtextxy(625, 227, "Finished");
-
-                setcolor(CYAN);
-                line(30, 240, 770, 240);
-
-                // Priority Scheduling Simulation (non-preemptive)
-                int time = 0, finished = 0, yPos = 250, rowHeight = 25;
-                vector<bool> done(n, false);
-                vector<int> finishTime(n, -1);
-                while(finished < n && yPos < 620) {
-                    // Find available processes
-                    vector<Proc*> ready;
-                    for(auto& p : procs)
-                        if(!done[p.pid-1] && p.arr <= time && p.remain > 0)
-                            ready.push_back(&p);
-                    // Select process with highest priority (lowest prio value)
-                    Proc* run = nullptr;
-                    if(!ready.empty()) {
-                        run = *min_element(ready.begin(), ready.end(), [](Proc* a, Proc* b){
-                            return a->prio < b->prio || (a->prio == b->prio && a->arr < b->arr);
-                        });
-                    }
-
-                    // Draw current time row
-                    setfillstyle(SOLID_FILL, DARKGRAY);
-                    bar(30, yPos - 2, 770, yPos + 18);
-
-                    setcolor(WHITE);
-                    settextstyle(8, 0, 1);
-                    char buf[32];
-                    sprintf(buf, "%d", time);
-                    outtextxy(55, yPos, buf);
-
-                    if(run) {
-                        // Running process
-                        sprintf(buf, "P%d", run->pid);
-                        setcolor(BLACK);
-                        setfillstyle(SOLID_FILL, LIGHTGREEN);
-                        bar(120, yPos, 180, yPos+15);
-                        rectangle(120, yPos, 180, yPos+15);
-                        outtextxy(130, yPos+2, buf);
-
-                        sprintf(buf, "%d", run->prio);
-                        outtextxy(210, yPos, buf);
-                        sprintf(buf, "%d", run->arr);
-                        outtextxy(310, yPos, buf);
-                        sprintf(buf, "%d", run->burst);
-                        outtextxy(410, yPos, buf);
-
-                        setcolor(GREEN);
-                        outtextxy(510, yPos, "Running");
-
-                        // Mark start time
-                        if(run->start == -1) run->start = time;
-                        // Run to completion (non-preemptive)
-                        delay(500);
-                        time += run->remain;
-                        run->remain = 0;
-                        run->finish = time;
-                        done[run->pid-1] = true;
-                        finished++;
-                        yPos += rowHeight;
-
-                        // Show finished row
-                        setfillstyle(SOLID_FILL, LIGHTRED);
-                        bar(120, yPos, 180, yPos+15);
-                        rectangle(120, yPos, 180, yPos+15);
-                        sprintf(buf, "P%d", run->pid);
-                        setcolor(BLACK);
-                        outtextxy(130, yPos+2, buf);
-                        sprintf(buf, "%d", run->prio);
-                        outtextxy(210, yPos, buf);
-                        sprintf(buf, "%d", run->arr);
-                        outtextxy(310, yPos, buf);
-                        sprintf(buf, "%d", run->burst);
-                        outtextxy(410, yPos, buf);
-                        setcolor(RED);
-                        outtextxy(510, yPos, "Finished");
-                        yPos += rowHeight;
-                    } else {
-                        // No process running, CPU idle
-                        setcolor(WHITE);
-                        outtextxy(130, yPos, "-");
-                        outtextxy(210, yPos, "-");
-                        outtextxy(310, yPos, "-");
-                        outtextxy(410, yPos, "-");
-                        setcolor(LIGHTGRAY);
-                        outtextxy(510, yPos, "Idle");
-                        delay(500);
-                        time++;
-                        yPos += rowHeight;
-                    }
-                }
-
-                // Show waiting processes (if any)
-                for(auto& p : procs) {
-                    if(p.remain > 0) {
-                        setfillstyle(SOLID_FILL, LIGHTGRAY);
-                        bar(120, yPos, 180, yPos+15);
-                        rectangle(120, yPos, 180, yPos+15);
-                        char buf[32];
-                        sprintf(buf, "P%d", p.pid);
-                        setcolor(BLACK);
-                        outtextxy(130, yPos+2, buf);
-                        sprintf(buf, "%d", p.prio);
-                        outtextxy(210, yPos, buf);
-                        sprintf(buf, "%d", p.arr);
-                        outtextxy(310, yPos, buf);
-                        sprintf(buf, "%d", p.burst);
-                        outtextxy(410, yPos, buf);
-                        setcolor(LIGHTGRAY);
-                        outtextxy(510, yPos, "Waiting");
-                        yPos += rowHeight;
-                    }
-                }
-
-                // Show summary
-                setcolor(YELLOW);
-                settextstyle(8, 0, 2);
-                char result[200];
-                double avgTAT = 0, avgWT = 0;
-                for(auto& p : procs) {
-                    int tat = p.finish - p.arr;
-                    int wt = tat - p.burst;
-                    avgTAT += tat;
-                    avgWT += wt;
-                }
-                if(n) {
-                    avgTAT /= n;
-                    avgWT /= n;
-                }
-                sprintf(result, "Avg Turnaround: %.2lf, Avg Waiting: %.2lf", avgTAT, avgWT);
-                outtextxy(200, 625, result);
+                outtextxy(625, 212, "Idle");
 
                 // Wait for user to click back
                 while(true) {
@@ -1836,8 +1814,6 @@ void ps_visualization() {
         }
     }
 }
-
-// SJF Algorithm (Non-preemptive) and Visualization
 
 void sjf_algorithm() {
     setbkcolor(DARKGRAY);
@@ -1874,7 +1850,10 @@ void sjf_algorithm() {
     char procCountStr[10] = "", procStr[1000] = "";
     bool showResult = false;
     bool resultDisplayed = false;
-    vector<array<int, 3>> result;
+    struct Proc { int arr, burst, pid, start, finish, wait, tat; };
+    vector<Proc> result;
+
+    double avgTAT = 0, avgWT = 0;
 
     while(true) {
         submit.hover(GREEN);
@@ -1895,6 +1874,8 @@ void sjf_algorithm() {
             else if(submit.cursor()) {
                 setfillstyle(SOLID_FILL, DARKGRAY);
                 bar(100, 370, 700, 500);
+                setfillstyle(SOLID_FILL, DARKGRAY);
+                bar(100, 510, 700, 570); // Clear avg box
 
                 if(strlen(procCountStr) == 0 || strlen(procStr) == 0) {
                     setcolor(RED);
@@ -1919,17 +1900,13 @@ void sjf_algorithm() {
 
                 // Parse process input
                 istringstream iss(procStr);
-                vector<array<int,3>> v;
-                map<int, int> burstMap, execMap;
-                int cnt = 0;
+                vector<Proc> procs;
                 for(int i = 0; i < n; i++) {
                     int arr, burst;
                     if(!(iss >> arr >> burst)) break;
-                    v.push_back({arr, burst, i+1});
-                    burstMap[i+1] = burst;
-                    cnt++;
+                    procs.push_back({arr, burst, i+1, -1, -1, 0, 0});
                 }
-                if(cnt != n) {
+                if(procs.size() != n) {
                     setcolor(RED);
                     settextstyle(8, 0, 2);
                     outtextxy(200, 370, "Invalid process input!");
@@ -1938,34 +1915,49 @@ void sjf_algorithm() {
                     delay(1000);
                     continue;
                 }
-                sort(v.begin(), v.end());
-                int st = 0, end = 0;
-                for(int i=0;i<n;i++) end+= v[i][1];
 
-                vector<array<int,3>> a;
-                map<int,int> mp2;
-                for(int i=0;i<end;i++){
-                    int ind = 0;
-                    vector<array<int,3>> na;
-                    while(1){
-                        if( ind<v.size() && v[ind][0]<=i && burstMap[v[ind][2]]>0 ) na.push_back({burstMap[v[ind][2]], v[ind][0], v[ind][2]}),ind++;
-                        else break;
+                // Sort by arrival
+                sort(procs.begin(), procs.end(), [](const Proc& a, const Proc& b){
+                    return a.arr < b.arr;
+                });
+
+                int time = 0, finished = 0;
+                vector<bool> done(n, false);
+                while(finished < n) {
+                    // Find ready processes
+                    vector<Proc*> ready;
+                    for(auto& p : procs)
+                        if(!done[p.pid-1] && p.arr <= time)
+                            ready.push_back(&p);
+                    Proc* run = nullptr;
+                    if(!ready.empty()) {
+                        run = *min_element(ready.begin(), ready.end(), [](Proc* a, Proc* b){
+                            return a->burst < b->burst || (a->burst == b->burst && a->arr < b->arr);
+                        });
                     }
-                    sort(na.begin(), na.end());
-                    if( na.size() >= 1){
-                        burstMap[na[0][2]]--;
-                        mp2[na[0][2]]++;
-                        if( burstMap[na[0][2]] == 0 ){
-                            auto it = find_if(v.begin(), v.end(), [&](auto &x) { return x[2] == na[0][2]; });
-                            v.erase(it);
-                        }
-                        a.push_back({na[0][2], i, mp2[na[0][2]]});
-                    }
-                    else {
-                        a.push_back({-1, i, 1});
+                    if(run) {
+                        run->start = time;
+                        run->finish = time + run->burst;
+                        run->tat = run->finish - run->arr;
+                        run->wait = run->start - run->arr;
+                        time += run->burst;
+                        done[run->pid-1] = true;
+                        finished++;
+                    } else {
+                        time++;
                     }
                 }
-                result = a;
+                result = procs;
+                // Calculate averages
+                avgTAT = 0; avgWT = 0;
+                for(auto &p : result) {
+                    avgTAT += p.tat;
+                    avgWT += p.wait;
+                }
+                if(n) {
+                    avgTAT /= n;
+                    avgWT /= n;
+                }
                 showResult = true;
                 resultDisplayed = false;
             }
@@ -1979,6 +1971,8 @@ void sjf_algorithm() {
                 bar(51, 221, 699, 269);
                 setfillstyle(SOLID_FILL, DARKGRAY);
                 bar(100, 370, 700, 500);
+                setfillstyle(SOLID_FILL, DARKGRAY);
+                bar(100, 510, 700, 570); // Clear avg box
             }
             else if(back.cursor()) {
                 menu();
@@ -1987,6 +1981,7 @@ void sjf_algorithm() {
         }
 
         if(showResult && !resultDisplayed) {
+            // Draw result table
             setfillstyle(SOLID_FILL, LIGHTBLUE);
             bar(100, 370, 700, 500);
             setcolor(BLACK);
@@ -1996,21 +1991,44 @@ void sjf_algorithm() {
             setcolor(BLACK);
             int y = 380;
             outtextxy(110, y, "PID");
-            outtextxy(170, y, "Time");
-            outtextxy(250, y, "Exec");
+            outtextxy(160, y, "Arrival");
+            outtextxy(230, y, "Burst");
+            outtextxy(300, y, "Start");
+            outtextxy(370, y, "Finish");
+            outtextxy(440, y, "Wait");
+            outtextxy(510, y, "TAT");
             y += 20;
-            for(auto &x : result) {
-                if(x[0] == -1) continue;
-                char buf[64];
-                sprintf(buf, "P%d", x[0]);
+            for(auto &p : result) {
+                char buf[32];
+                sprintf(buf, "P%d", p.pid);
                 outtextxy(110, y, buf);
-                sprintf(buf, "%d", x[1]);
-                outtextxy(170, y, buf);
-                sprintf(buf, "%d", x[2]);
-                outtextxy(250, y, buf);
+                sprintf(buf, "%d", p.arr);
+                outtextxy(160, y, buf);
+                sprintf(buf, "%d", p.burst);
+                outtextxy(230, y, buf);
+                sprintf(buf, "%d", p.start);
+                outtextxy(300, y, buf);
+                sprintf(buf, "%d", p.finish);
+                outtextxy(370, y, buf);
+                sprintf(buf, "%d", p.wait);
+                outtextxy(440, y, buf);
+                sprintf(buf, "%d", p.tat);
+                outtextxy(510, y, buf);
                 y += 18;
                 if(y > 480) break;
             }
+
+            // Draw averages in a separate box below
+            setfillstyle(SOLID_FILL, LIGHTCYAN);
+            bar(100, 510, 700, 570);
+            setcolor(BLACK);
+            rectangle(100, 510, 700, 570);
+            settextstyle(8, 0, 2);
+            setcolor(BLUE);
+            char buf[128];
+            sprintf(buf, "Avg Turnaround: %.2lf, Avg Waiting: %.2lf", avgTAT, avgWT);
+            outtextxy(150, 530, buf);
+
             resultDisplayed = true;
         }
     }
@@ -2067,15 +2085,14 @@ void sjf_visualization() {
 
                 // Parse process input
                 istringstream iss(procStr);
-                vector<array<int,3>> v;
-                map<int, int> burstMap;
+                struct Proc { int arr, burst, pid, remain, start, finish; };
+                vector<Proc> procs;
                 for(int i = 0; i < n; i++) {
                     int arr, burst;
                     if(!(iss >> arr >> burst)) break;
-                    v.push_back({arr, burst, i+1});
-                    burstMap[i+1] = burst;
+                    procs.push_back({arr, burst, i+1, burst, -1, -1});
                 }
-                if(v.size() != n) {
+                if(procs.size() != n) {
                     setcolor(RED);
                     settextstyle(8, 0, 2);
                     outtextxy(200, 170, "Invalid process input!");
@@ -2084,66 +2101,107 @@ void sjf_visualization() {
                     bar(200, 170, 600, 190);
                     continue;
                 }
-                sort(v.begin(), v.end());
-                int st = 0, end = 0;
-                for(int i=0;i<n;i++) end+= v[i][1];
 
                 // Clear visualization area
                 setfillstyle(SOLID_FILL, DARKGRAY);
                 bar(30, 170, 770, 630);
 
-                // Header for visualization
+                // Draw Gantt chart style
                 settextstyle(8, 0, 2);
                 setcolor(YELLOW);
-                outtextxy(50, 180, "Time");
-                outtextxy(120, 180, "PID");
-                outtextxy(200, 180, "Exec");
+                outtextxy(50, 180, "Gantt Chart (PID)");
 
-                setcolor(CYAN);
-                line(30, 230, 770, 230);
-
-                // SJF Simulation
-                map<int,int> mp2;
-                int yPos = 240, rowHeight = 22;
-                for(int i=0;i<end && yPos < 620;i++){
-                    int ind = 0;
-                    vector<array<int,3>> na;
-                    while(1){
-                        if( ind<v.size() && v[ind][0]<=i && burstMap[v[ind][2]]>0 ) na.push_back({burstMap[v[ind][2]], v[ind][0], v[ind][2]}),ind++;
-                        else break;
+                int time = 0, finished = 0, xPos = 60, yPos = 220;
+                vector<bool> done(n, false);
+                int boxWidth = 60, boxHeight = 40;
+                vector<pair<int,int>> gantt; // {pid, duration}
+                while(finished < n) {
+                    vector<Proc*> ready;
+                    for(auto& p : procs)
+                        if(!done[p.pid-1] && p.arr <= time)
+                            ready.push_back(&p);
+                    Proc* run = nullptr;
+                    if(!ready.empty()) {
+                        run = *min_element(ready.begin(), ready.end(), [](Proc* a, Proc* b){
+                            return a->burst < b->burst || (a->burst == b->burst && a->arr < b->arr);
+                        });
                     }
-                    sort(na.begin(), na.end());
-                    setfillstyle(SOLID_FILL, DARKGRAY);
-                    bar(30, yPos - 2, 770, yPos + 18);
-
-                    setcolor(WHITE);
-                    settextstyle(8, 0, 1);
-                    char buf[32];
-                    sprintf(buf, "%d", i);
-                    outtextxy(55, yPos, buf);
-
-                    if(na.size() >= 1){
-                        burstMap[na[0][2]]--;
-                        mp2[na[0][2]]++;
-                        if( burstMap[na[0][2]] == 0 ){
-                            auto it = find_if(v.begin(), v.end(), [&](auto &x) { return x[2] == na[0][2]; });
-                            v.erase(it);
-                        }
-                        sprintf(buf, "P%d", na[0][2]);
-                        setcolor(LIGHTGREEN);
-                        outtextxy(130, yPos, buf);
-                        sprintf(buf, "%d", mp2[na[0][2]]);
-                        setcolor(WHITE);
-                        outtextxy(210, yPos, buf);
+                    if(run) {
+                        run->start = time;
+                        run->finish = time + run->burst;
+                        gantt.push_back({run->pid, run->burst});
+                        time += run->burst;
+                        done[run->pid-1] = true;
+                        finished++;
+                    } else {
+                        gantt.push_back({-1, 1});
+                        time++;
                     }
-                    else {
-                        setcolor(LIGHTGRAY);
-                        outtextxy(130, yPos, "-");
-                        outtextxy(210, yPos, "-");
-                    }
-                    delay(500);
-                    yPos += rowHeight;
                 }
+                int totalTime = time;
+
+                // Draw Gantt chart with animation and correct time markers
+                xPos = 60;
+                int currTime = 0;
+                int rowStartX = xPos;
+                int rowY = yPos;
+                int rowEndX = 700;
+                for(size_t idx = 0; idx < gantt.size(); ++idx) {
+                    auto& g = gantt[idx];
+                    // Draw box
+                    if(g.first == -1) {
+                        setfillstyle(SOLID_FILL, LIGHTGRAY);
+                        bar(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        setcolor(BLACK);
+                        rectangle(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        setcolor(RED);
+                        outtextxy(xPos+10, rowY+10, "Idle");
+                    } else {
+                        setfillstyle(SOLID_FILL, LIGHTGREEN);
+                        bar(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        setcolor(BLACK);
+                        rectangle(xPos, rowY, xPos+boxWidth, rowY+boxHeight);
+                        char buf[32];
+                        sprintf(buf, "P%d", g.first);
+                        setcolor(BLUE);
+                        outtextxy(xPos+15, rowY+10, buf);
+                    }
+                    // Draw time marker at the left of each box
+                    setcolor(BLACK);
+                    char tbuf[16];
+                    sprintf(tbuf, "%d", currTime);
+                    outtextxy(xPos, rowY+boxHeight+5, tbuf);
+
+                    delay(400);
+                    currTime += g.second;
+                    xPos += boxWidth;
+                    // If out of row, move to next row and draw time marker at row end
+                    if(xPos > rowEndX || idx == gantt.size()-1) {
+                        // Draw time marker at the end of the row
+                        char tbufEnd[16];
+                        sprintf(tbufEnd, "%d", currTime);
+                        outtextxy(xPos, rowY+boxHeight+5, tbufEnd);
+                        rowY += boxHeight+30;
+                        xPos = rowStartX;
+                    }
+                }
+
+                // Show legend
+                settextstyle(8, 0, 1);
+                setcolor(WHITE);
+                outtextxy(600, 180, "Legend:");
+                setfillstyle(SOLID_FILL, LIGHTGREEN);
+                bar(600, 195, 620, 205);
+                setcolor(BLACK);
+                rectangle(600, 195, 620, 205);
+                setcolor(WHITE);
+                outtextxy(625, 197, "Running");
+                setfillstyle(SOLID_FILL, LIGHTGRAY);
+                bar(600, 210, 620, 220);
+                setcolor(BLACK);
+                rectangle(600, 210, 620, 220);
+                setcolor(WHITE);
+                outtextxy(625, 212, "Idle");
 
                 // Wait for user to click back
                 while(true) {
