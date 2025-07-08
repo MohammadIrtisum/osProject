@@ -209,10 +209,10 @@ void menu()
     Button pageOptVis(405, 370, 675, 430, BLUE, "Optimal Visual");
 
     Button ps(125, 440, 395, 500, BLUE, "PS");
-    Button psVis(405, 440, 675, 500, BLUE, "PS Visualisation");
+    Button psVis(405, 440, 675, 500, BLUE, "PS Visual");
 
     Button sjf(125, 510, 395, 570, BLUE, "SJF");
-    Button sjfVis(405, 510, 675, 570, BLUE, "SJF Visualisation");
+    Button sjfVis(405, 510, 675, 570, BLUE, "SJF Visual");
 
     Button aboutMe(125, 590, 675, 650, MAGENTA, "About Us");
     Button ext(125, 660, 675, 720, MAGENTA, "Exit");
